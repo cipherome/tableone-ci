@@ -240,7 +240,7 @@ class TableOne:
         normal_test: bool = False,
         tukey_test: bool = False,
         pval_threshold: Optional[float] = None,
-        missing_value_on_separate_row: bool = True,
+        missing_value_on_separate_row: bool = False,
     ) -> None:
         # labels is now rename
         if labels is not None and rename is not None:
