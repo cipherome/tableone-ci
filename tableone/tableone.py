@@ -1519,7 +1519,7 @@ class TableOne:
                     # apply order
                     all_var = table.loc[k].index.unique(level="value")
                     new_idx = [(k, " ")] if self._isnull and self._missing_value_on_separate_row else []
-                    new_idx = +[(k, "{}".format(v)) for v in self._order[k]]
+                    new_idx += [(k, "{}".format(v)) for v in self._order[k]]
                     new_idx += [(k, "{}".format(v)) for v in all_var if v not in self._order[k]]
 
                 # restructure to match the original idx
