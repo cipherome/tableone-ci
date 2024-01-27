@@ -1414,7 +1414,7 @@ class TableOne:
             table = self.cat_table
 
         # ensure column headers are strings before reindexing
-        # table = table.reset_index().set_index(["variable", "value"])  # type: ignore
+        table = table.reset_index().set_index(["variable", "value"])  # type: ignore
         table.columns = table.columns.values.astype(str)
 
         # sort the table rows
