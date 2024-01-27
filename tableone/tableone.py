@@ -1373,8 +1373,20 @@ class TableOne:
 
         if self._isnull and self._missing_value_on_separate_row:
             for variable in isnull.index.values.tolist():
-                missing_record = {"Missing": isnull.loc[variable]["Missing"]}
-                line = pd.DataFrame(missing_record, index=[(variable, " ")])
+                record = {"Missing": isnull.loc[variable]["Missing"]}
+
+                if self._pval and self._pval_adjust:
+                    record["P-Value (adjusted)"] = self._htest_table.loc[variable]["P-Value (adjusted)"]
+                    record["Test"] = self._htest_table.loc[variable]["Test"]
+                if self._pval:
+                    record["P-Value"] = self._htest_table.loc[variable]["P-Value"]
+                    record["Test"] = self._htest_table.loc[variable]["Test"]
+
+                if self._smd:
+                    for smd_col in self.smd_table:
+                        record[smd_col] = self.smd_table.loc[variable][smd_col]
+
+                line = pd.DataFrame(record, index=[(variable, " ")])
                 table = pd.concat([table, line], ignore_index=False, join="outer")
             table.index = table.index.set_names(["variable", "value"])
             table = table.sort_index()
@@ -1543,11 +1555,6 @@ class TableOne:
         # only display data in first level row
         dupe_mask = table.groupby(level=[0]).cumcount().ne(0)  # type: ignore
         dupe_columns = ["Missing"]
-        table[dupe_columns] = table[dupe_columns].mask(dupe_mask).fillna("")
-
-        if self._isnull and self._missing_value_on_separate_row:
-            dupe_mask = table.groupby(level=[0]).cumcount().gt(1)  # type: ignore
-        dupe_columns = []
         optional_columns = ["P-Value", "P-Value (adjusted)", "Test"]
         if self._smd:
             optional_columns = optional_columns + list(self.smd_table.columns)

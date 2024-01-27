@@ -1029,10 +1029,7 @@ class TestTableOne(object):
         group = "Grouped by even"
         col = "P-Value (adjusted)"
         for k in pvals_expected:
-            values = t1.tableone.loc[k][group][col].values.tolist()
-            if "nan" in values:
-                values.remove("nan")
-            assert values[0] == pvals_expected[k]
+            assert t1.tableone.loc[k][group][col].values[0] == pvals_expected[k]
 
         # catch the pval_adjust=True
         with warnings.catch_warnings(record=False):
@@ -1040,10 +1037,7 @@ class TestTableOne(object):
             TableOne(df, groupby="even", pval=True, pval_adjust=True)
 
         for k in pvals_expected:
-            values = t1.tableone.loc[k][group][col].values.tolist()
-            if "nan" in values:
-                values.remove("nan")
-            assert values[0] == pvals_expected[k]
+            assert t1.tableone.loc[k][group][col].values[0] == pvals_expected[k]
 
     def test_pval_correction(self):
         """
@@ -1220,7 +1214,7 @@ class TestTableOne(object):
         exp_smd = {"ICU": "0.747", "MechVent": "nan", "death": "0.017"}
 
         for k in exp_smd:
-            smd = t.tableone.loc[k, "Grouped by MechVent"]["SMD (0,1)"][1]
+            smd = t.tableone.loc[k, "Grouped by MechVent"]["SMD (0,1)"][0]
             assert smd == exp_smd[k]
 
     def test_compute_standardized_mean_difference_categorical(self, data_pn):
