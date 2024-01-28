@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tableone-ci"
+name = "tableone"
 version = "0.8.0"
 authors = [
   { name="Tom Pollard", email="tpollard@mit.edu" },
