@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tableone"
+name = "tableone-ci"
 version = "0.8.0"
 authors = [
   { name="Tom Pollard", email="tpollard@mit.edu" },
@@ -39,4 +39,4 @@ reportMissingImports = true
 [project.urls]
 homepage = "https://github.com/tompollard/tableone/"
 documentation = "https://tableone.readthedocs.io/"
-repository = "https://github.com/tompollard/tableone/"
+repository = "https://github.com/cipherome/tableone-ci/"
