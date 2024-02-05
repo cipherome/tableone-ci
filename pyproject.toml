@@ -39,4 +39,4 @@ reportMissingImports = true
 [project.urls]
 homepage = "https://github.com/tompollard/tableone/"
 documentation = "https://tableone.readthedocs.io/"
-repository = "https://github.com/tompollard/tableone/"
+repository = "https://github.com/cipherome/tableone-ci/"
