@@ -1510,6 +1510,9 @@ class TableOne:
                 else:
                     continue
 
+                if self._isnull and self._missing_value_on_separate_row:
+                    limit += 1
+
                 if not self._order or (self._order and k not in self._order):
                     # re-order the variables by frequency
                     count = data[k].value_counts().sort_values(ascending=False)
