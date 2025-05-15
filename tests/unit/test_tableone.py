@@ -312,7 +312,7 @@ class TestTableOne(object):
             label_suffix=False,
             missing_value_on_separate_row=True,
         )
-        assert table.tableone.loc["age_group", :].shape[0] == 3
+        assert table.tableone.loc["age_group", :].shape[0] == 4
 
         # test other categories are not affected if limit > num categories
         # +1 for the missing count row
@@ -365,7 +365,7 @@ class TestTableOne(object):
             label_suffix=False,
             missing_value_on_separate_row=True,
         )
-        assert table.tableone.loc["age_group", :].shape[0] == 3
+        assert table.tableone.loc["age_group", :].shape[0] == 4
 
         # test other categories are not affected if limit > num categories
         # +1 because it has the extra row to separately display the missing count
