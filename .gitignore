@@ -105,3 +105,6 @@ ENV/
 
 # text editors
 .vscode/
+
+# Local scratch notes
+.tmp/

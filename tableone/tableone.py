@@ -115,8 +115,8 @@ class TableOne:
         Display a column with the names of hypothesis tests (default: False).
     htest : dict, optional
         Dictionary of custom hypothesis tests. Keys are variable names and
-        values are functions. Functions must take a list of Numpy Arrays as
-        the input argument and must return a test result.
+        values are functions. Functions must take each group as a Numpy Array
+        positional argument and return a test result.
         e.g. htest = {'age': myfunc}
     missing : bool, optional
         Display a count of null values (default: True).
@@ -207,6 +207,8 @@ class TableOne:
 
     ...
     """
+
+    _PVAL_NOT_TESTED = "Not tested"
 
     def __init__(
         self,
@@ -345,13 +347,19 @@ class TableOne:
 
         # if custom order is provided, ensure that values are strings
         if order:
-            order = {k: ["{}".format(v) for v in order[k]] for k in order}
+            order = {
+                k: list(order[k]) if k == groupby else ["{}".format(v) for v in order[k]]
+                for k in order
+            }
 
         # if input df has ordered categorical variables, get the order.
         order_cats = [x for x in data.select_dtypes("category") if data[x].dtype.ordered]  # type: ignore
         if any(order_cats):
             d_order_cats = {v: data[v].cat.categories for v in order_cats}
-            d_order_cats = {k: ["{}".format(v) for v in d_order_cats[k]] for k in d_order_cats}
+            d_order_cats = {
+                k: list(d_order_cats[k]) if k == groupby else ["{}".format(v) for v in d_order_cats[k]]
+                for k in d_order_cats
+            }
 
         # combine the orders. custom order takes precedence.
         if order_cats and order:
@@ -420,8 +428,12 @@ class TableOne:
         # correct for multiple testing
         if self._pval and self._pval_adjust:
             alpha = 0.05
-            adjusted = multitest.multipletests(self._htest_table["P-Value"], alpha=alpha, method=self._pval_adjust)
-            self._htest_table["P-Value (adjusted)"] = adjusted[1]
+            pvalues = pd.to_numeric(self._htest_table["P-Value"], errors="coerce")
+            pval_mask = pvalues.notnull()
+            self._htest_table["P-Value (adjusted)"] = np.nan
+            if pval_mask.any():
+                adjusted = multitest.multipletests(pvalues.loc[pval_mask], alpha=alpha, method=self._pval_adjust)
+                self._htest_table.loc[pval_mask, "P-Value (adjusted)"] = adjusted[1]
             self._htest_table["adjust method"] = self._pval_adjust
 
         # create overall tables if required
@@ -762,26 +774,37 @@ class TableOne:
 
         return smd, se
 
+    def _nonmissing_values(self, x):
+        return x.values[~np.isnan(x.values)]
+
     def _q25(self, x):
         """
         Compute percentile (25th)
         """
-        return np.nanpercentile(x.values, 25)
+        vals = self._nonmissing_values(x)
+        if len(vals) == 0:
+            return np.nan
+        return np.percentile(vals, 25)
 
     def _q75(self, x):
         """
         Compute percentile (75th)
         """
-        return np.nanpercentile(x.values, 75)
+        vals = self._nonmissing_values(x)
+        if len(vals) == 0:
+            return np.nan
+        return np.percentile(vals, 75)
 
     def _std(self, x):
         """
         Compute standard deviation with ddof degrees of freedom
         """
-        if len(x) == 1:
+        vals = self._nonmissing_values(x)
+        if len(vals) == 0:
+            return np.nan
+        if len(vals) == 1:
             return 0.0
-        else:
-            return np.nanstd(x.values, ddof=self._ddof)
+        return np.std(vals, ddof=self._ddof)
 
     def _hartigan_dip(self, x):
         """
@@ -878,31 +901,39 @@ class TableOne:
             )
             warnings.warn(msg)
 
+        vals = self._nonmissing_values(x)
+
         if x.name in self._nonnormal:
             f = "{{:.{}f}} [{{:.{}f}},{{:.{}f}}]".format(n, n, n)
+            if len(vals) == 0:
+                return f.format(np.nan, np.nan, np.nan)
             if self._min_max and x.name in self._min_max:
                 return f.format(
-                    np.nanmedian(x.values),
-                    np.nanmin(x.values),  # type: ignore
-                    np.nanmax(x.values),  # type: ignore
+                    np.median(vals),
+                    np.min(vals),  # type: ignore
+                    np.max(vals),  # type: ignore
                 )
             else:
                 return f.format(
-                    np.nanmedian(x.values),  # type: ignore
-                    np.nanpercentile(x.values, 25),  # type: ignore
-                    np.nanpercentile(x.values, 75),  # type: ignore
+                    np.median(vals),  # type: ignore
+                    np.percentile(vals, 25),  # type: ignore
+                    np.percentile(vals, 75),  # type: ignore
                 )
         else:
             if self._min_max and x.name in self._min_max:
                 f = "{{:.{}f}} [{{:.{}f}},{{:.{}f}}]".format(n, n, n)
+                if len(vals) == 0:
+                    return f.format(np.nan, np.nan, np.nan)
                 return f.format(
-                    np.nanmean(x.values),
-                    np.nanmin(x.values),  # type: ignore
-                    np.nanmax(x.values),  # type: ignore
+                    np.mean(vals),
+                    np.min(vals),  # type: ignore
+                    np.max(vals),  # type: ignore
                 )
             else:
                 f = "{{:.{}f}} ({{:.{}f}})".format(n, n)
-                return f.format(np.nanmean(x.values), self._std(x))  # type: ignore
+                if len(vals) == 0:
+                    return f.format(np.nan, np.nan)
+                return f.format(np.mean(vals), self._std(x))  # type: ignore
 
     def _create_cont_describe(self, data: pd.DataFrame, groupby: Optional[str] = None) -> pd.DataFrame:
         """
@@ -1110,23 +1141,10 @@ class TableOne:
             is_categorical = ~df.loc[v]["continuous"]
             is_normal = ~df.loc[v]["nonnormal"]
 
-            # if continuous, group data into list of lists
             if is_continuous:
-                catlevels = None
-                grouped_data = {}
-                for s in self._groupbylvls:
-                    lvl_data = data.loc[data[self._groupby] == s, v]
-                    # coerce to numeric and drop non-numeric data
-                    lvl_data = lvl_data.apply(pd.to_numeric, errors="coerce").dropna()
-                    # append to overall group data
-                    grouped_data[s] = lvl_data.values
-                min_observed = min([len(x) for x in grouped_data.values()])
-            # if categorical, create contingency table
+                grouped_data, min_observed, catlevels = self._continuous_htest_data(data, v)
             elif is_categorical:
-                catlevels = sorted(data[v].astype("category").cat.categories)
-                cross_tab = pd.crosstab(data[self._groupby].rename("_groupby_var_"), data[v])
-                min_observed = cross_tab.sum(axis=1).min()
-                grouped_data = cross_tab.T.to_dict("list")
+                grouped_data, min_observed, catlevels = self._categorical_htest_data(data, v)
 
             # minimum number of observations across all levels
             df.loc[v, "min_observed"] = min_observed  # type: ignore
@@ -1137,6 +1155,33 @@ class TableOne:
             )  # type: ignore
 
         return df
+
+    def _continuous_htest_data(self, data: pd.DataFrame, variable: str):
+        """
+        Build grouped numeric arrays for continuous hypothesis tests.
+        """
+        grouped_data = {}
+        for level in self._groupbylvls:
+            lvl_data = data.loc[data[self._groupby] == level, variable]
+            lvl_data = lvl_data.apply(pd.to_numeric, errors="coerce").dropna()
+            grouped_data[level] = lvl_data.values
+
+        min_observed = min([len(x) for x in grouped_data.values()])
+        return grouped_data, min_observed, None
+
+    def _categorical_htest_data(self, data: pd.DataFrame, variable: str):
+        """
+        Build a grouped contingency table for categorical hypothesis tests.
+        """
+        cross_tab = pd.crosstab(data[self._groupby].rename("_groupby_var_"), data[variable])
+        cross_tab = cross_tab.loc[:, cross_tab.sum(axis=0) > 0]
+        cross_tab = cross_tab.reindex(index=self._groupbylvls, fill_value=0)
+
+        catlevels = list(cross_tab.columns)
+        min_observed = cross_tab.sum(axis=1).min()
+        grouped_data = cross_tab.T.to_dict("list")
+
+        return grouped_data, min_observed, catlevels
 
     def _create_smd_table(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -1181,7 +1226,7 @@ class TableOne:
                         n2=self.cont_describe["count"][p[1]].loc[v],
                         unbiased=False,
                     )
-                    df[colname.format(p[0], p[1])].loc[v] = smd
+                    df.loc[v, colname.format(p[0], p[1])] = smd
             except AttributeError:
                 pass
 
@@ -1194,7 +1239,7 @@ class TableOne:
                         n2=self.cat_describe.loc[[v]]["freq"][p[1]].sum(),
                         unbiased=False,
                     )
-                    df[colname.format(p[0], p[1])].loc[v] = smd  # type: ignore
+                    df.loc[v, colname.format(p[0], p[1])] = smd
             except AttributeError:
                 pass
 
@@ -1240,16 +1285,16 @@ class TableOne:
 
         # no test by default
         pval = np.nan
-        ptest = "Not tested"
+        ptest = self._PVAL_NOT_TESTED
 
         # apply user defined test
         if self._htest and v in self._htest:
-            pval = self._htest[v](*grouped_data.values())
+            pval = self._coerce_custom_pvalue(self._htest[v](*grouped_data.values()), v)
             ptest = self._htest[v].__name__
             return pval, ptest
 
         # do not test if the variable has no observations in a level
-        if min_observed == 0:
+        if min_observed == 0 or (is_continuous and is_normal and min_observed < 2):
             msg = ("No P-Value was computed for {variable} due to the low " "number of observations." "").format(
                 variable=v
             )
@@ -1293,6 +1338,36 @@ class TableOne:
                         self._warnings[chi_warn] = [v]
 
         return pval, ptest
+
+    def _coerce_custom_pvalue(self, pval, variable: str):
+        """
+        Validate the scalar p-value returned by a custom hypothesis test.
+        """
+        if np.isscalar(pval):
+            return pval
+
+        msg = (
+            "Custom hypothesis test for {variable} must return a scalar "
+            "p-value, not a test result object."
+        ).format(variable=variable)
+        raise InputError(msg)
+
+    def _format_pvalues(self, values: pd.Series) -> pd.Series:
+        """
+        Format p-values for display in the final table.
+        """
+        if self._pval_threshold:
+            asterisk_mask = values.notnull() & (values < self._pval_threshold)
+        else:
+            asterisk_mask = pd.Series(False, index=values.index)
+
+        formatted = values.apply(lambda x: "" if pd.isnull(x) else "{:.3f}".format(x))
+        formatted.loc[formatted == "0.000"] = "<0.001"
+
+        if self._pval_threshold:
+            formatted.loc[asterisk_mask] = formatted.loc[asterisk_mask].astype(str) + "*"
+
+        return formatted
 
     def _create_cont_table(self, data, overall) -> pd.DataFrame:
         """
@@ -1378,7 +1453,7 @@ class TableOne:
                 if self._pval and self._pval_adjust:
                     record["P-Value (adjusted)"] = self._htest_table.loc[variable]["P-Value (adjusted)"]
                     record["Test"] = self._htest_table.loc[variable]["Test"]
-                if self._pval:
+                elif self._pval:
                     record["P-Value"] = self._htest_table.loc[variable]["P-Value"]
                     record["Test"] = self._htest_table.loc[variable]["Test"]
 
@@ -1440,24 +1515,10 @@ class TableOne:
 
         # round pval column and convert to string
         if self._pval and self._pval_adjust:
-            if self._pval_threshold:
-                asterisk_mask = table["P-Value (adjusted)"] < self._pval_threshold
-
-            table["P-Value (adjusted)"] = table["P-Value (adjusted)"].apply("{:.3f}".format).astype(str)
-            table.loc[table["P-Value (adjusted)"] == "0.000", "P-Value (adjusted)"] = "<0.001"
-
-            if self._pval_threshold:
-                table.loc[asterisk_mask, "P-Value (adjusted)"] = table["P-Value (adjusted)"][asterisk_mask].astype(str) + "*"  # type: ignore
+            table["P-Value (adjusted)"] = self._format_pvalues(table["P-Value (adjusted)"])
 
         elif self._pval:
-            if self._pval_threshold:
-                asterisk_mask = table["P-Value"] < self._pval_threshold
-
-            table["P-Value"] = table["P-Value"].apply("{:.3f}".format).astype(str)
-            table.loc[table["P-Value"] == "0.000", "P-Value"] = "<0.001"
-
-            if self._pval_threshold:
-                table.loc[asterisk_mask, "P-Value"] = table["P-Value"][asterisk_mask].astype(str) + "*"  # type: ignore
+            table["P-Value"] = self._format_pvalues(table["P-Value"])
 
         # round smd columns and convert to string
         if self._smd:
@@ -1545,6 +1606,7 @@ class TableOne:
             table = pd.concat([n_row, table], sort=False)
         except TypeError:
             table = pd.concat([n_row, table])
+        table = table.astype(object)
 
         if self._groupbylvls == ["Overall"]:
             table.loc["n", "Overall"] = len(data.index)
@@ -1593,7 +1655,8 @@ class TableOne:
         # ensure the order of columns is consistent
         if self._groupby and self._order and (self._groupby in self._order):
             header = ["{}".format(v) for v in table.columns.levels[1].values]  # type: ignore
-            cols = self._order[self._groupby] + ["{}".format(v) for v in header if v not in self._order[self._groupby]]
+            ordered_cols = ["{}".format(v) for v in self._order[self._groupby]]
+            cols = ordered_cols + ["{}".format(v) for v in header if v not in ordered_cols]
         elif self._groupby:
             cols = ["{}".format(v) for v in table.columns.levels[1].values]  # type: ignore
         else:

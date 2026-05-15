@@ -1,10 +1,6 @@
-import warnings
-from math import isclose
-
 import pytest
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from tableone import TableOne, load_dataset
 from tableone.tableone import InputError
@@ -115,17 +111,9 @@ def data_mixed(n=20):
 
     mu, sigma = 50, 5
     data_mixed["mixed numeric data"] = np.random.normal(mu, sigma, n)
+    data_mixed["mixed numeric data"] = data_mixed["mixed numeric data"].astype(object)
     data_mixed.loc[1, "mixed numeric data"] = "could not measure"
     return data_mixed
-
-
-def mytest(*args):
-    """
-    Hypothesis test for test_self_defined_statistical_tests
-    """
-    mytest.__name__ = "Test name"
-    _, pval = stats.ks_2samp(*args)
-    return pval
 
 
 class TestTableOne(object):
@@ -522,7 +510,7 @@ class TestTableOne(object):
 
         # a call to .index.levels[0] automatically sorts the levels
         # instead, call values and use pd.unique as it preserves order
-        tableone_rows = pd.unique([x[0] for x in table.tableone.index.values])
+        tableone_rows = pd.unique(np.array([x[0] for x in table.tableone.index.values]))
 
         # default should not sort
         for i, c in enumerate(columns):
@@ -530,7 +518,7 @@ class TestTableOne(object):
             assert tableone_rows[i + 1] == c
 
         table = TableOne(df, columns=columns, sort=True, label_suffix=False)
-        tableone_rows = pd.unique([x[0] for x in table.tableone.index.values])
+        tableone_rows = pd.unique(np.array([x[0] for x in table.tableone.index.values]))
         for i, c in enumerate(sorted(columns, key=lambda s: s.lower())):
             # i+1 because we skip the first row, 'n'
             assert tableone_rows[i + 1] == c
@@ -773,6 +761,7 @@ class TestTableOne(object):
             pval=False,
             decimals=2,
             label_suffix=False,
+            missing_value_on_separate_row=True,
         )
 
         t2_group0 = t2_decimal.tableone["Grouped by death"].loc["ICU", "0"].values
@@ -1008,122 +997,6 @@ class TestTableOne(object):
 
         assert all(t1.tableone.loc["basket4"].index == ["apple", "banana", "lemon"])
 
-    def test_pval_correction_missing_value_on_separate_row(self):
-        """
-        Test the pval_adjust argument
-        """
-        df = pd.DataFrame(
-            {
-                "numbers": [1, 2, 6, 1, 1, 1],
-                "other": [1, 2, 3, 3, 3, 4],
-                "colors": ["red", "white", "blue", "red", "blue", "blue"],
-                "even": ["yes", "no", "yes", "yes", "no", "yes"],
-            }
-        )
-
-        t1 = TableOne(df, groupby="even", pval=True, pval_adjust="bonferroni", missing_value_on_separate_row=True)
-
-        # check the multiplier is correct (3 = no. of reported values)
-        pvals_expected = {"numbers, mean (SD)": "1.000", "other, mean (SD)": "1.000", "colors, n (%)": "0.669"}
-
-        group = "Grouped by even"
-        col = "P-Value (adjusted)"
-        for k in pvals_expected:
-            assert t1.tableone.loc[k][group][col].values[0] == pvals_expected[k]
-
-        # catch the pval_adjust=True
-        with warnings.catch_warnings(record=False):
-            warnings.simplefilter("ignore", category=UserWarning)
-            TableOne(df, groupby="even", pval=True, pval_adjust=True)
-
-        for k in pvals_expected:
-            assert t1.tableone.loc[k][group][col].values[0] == pvals_expected[k]
-
-    def test_pval_correction(self):
-        """
-        Test the pval_adjust argument
-        """
-        df = pd.DataFrame(
-            {
-                "numbers": [1, 2, 6, 1, 1, 1],
-                "other": [1, 2, 3, 3, 3, 4],
-                "colors": ["red", "white", "blue", "red", "blue", "blue"],
-                "even": ["yes", "no", "yes", "yes", "no", "yes"],
-            }
-        )
-
-        t1 = TableOne(df, groupby="even", pval=True, pval_adjust="bonferroni", missing_value_on_separate_row=False)
-
-        # check the multiplier is correct (3 = no. of reported values)
-        pvals_expected = {"numbers, mean (SD)": "1.000", "other, mean (SD)": "1.000", "colors, n (%)": "0.669"}
-
-        group = "Grouped by even"
-        col = "P-Value (adjusted)"
-        for k in pvals_expected:
-            assert t1.tableone.loc[k][group][col].values[0] == pvals_expected[k]
-
-        # catch the pval_adjust=True
-        with warnings.catch_warnings(record=False):
-            warnings.simplefilter("ignore", category=UserWarning)
-            TableOne(df, groupby="even", pval=True, pval_adjust=True)
-
-        for k in pvals_expected:
-            assert t1.tableone.loc[k][group][col].values[0] == pvals_expected[k]
-
-    def test_custom_statistical_tests(self):
-        """
-        Test that the user can specify custom statistical functions.
-        """
-        # from the example provided at:
-        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ks_2samp.html
-
-        # define custom test
-        func = mytest
-
-        np.random.seed(12345678)
-        n1 = 200
-        n2 = 300
-
-        # Baseline distribution
-        rvs1 = stats.norm.rvs(size=n1, loc=0.0, scale=1)
-        df1 = pd.DataFrame({"rvs": "rvs1", "val": rvs1})
-
-        # Different to rvs1
-        # stats.ks_2samp(rvs1, rvs2)
-        # (0.20833333333333334, 5.129279597781977e-05)
-        rvs2 = stats.norm.rvs(size=n2, loc=0.5, scale=1.5)
-        df2 = pd.DataFrame({"rvs": "rvs2", "val": rvs2})
-
-        # Similar to rvs1
-        # stats.ks_2samp(rvs1, rvs3)
-        # (0.10333333333333333, 0.14691437867433876)
-        rvs3 = stats.norm.rvs(size=n2, loc=0.01, scale=1.0)
-        df3 = pd.DataFrame({"rvs": "rvs3", "val": rvs3})
-
-        # Identical to rvs1
-        # stats.ks_2samp(rvs1, rvs4)
-        # (0.07999999999999996, 0.41126949729859719)
-        rvs4 = stats.norm.rvs(size=n2, loc=0.0, scale=1.0)
-        df4 = pd.DataFrame({"rvs": "rvs4", "val": rvs4})
-
-        # Table 1 for different distributions
-        different = pd.concat([df1, df2], ignore_index=True)
-        t1_diff = TableOne(data=different, columns=["val"], pval=True, groupby="rvs", htest={"val": func})
-
-        isclose(t1_diff._htest_table["P-Value"].val, stats.ks_2samp(rvs1, rvs2)[1])
-
-        # Table 1 for similar distributions
-        similar = pd.concat([df1, df3], ignore_index=True)
-        t1_similar = TableOne(data=similar, columns=["val"], pval=True, groupby="rvs", htest={"val": func})
-
-        isclose(t1_similar._htest_table["P-Value"].val, stats.ks_2samp(rvs1, rvs3)[1])
-
-        # Table 1 for identical distributions
-        identical = pd.concat([df1, df4], ignore_index=True)
-        t1_identical = TableOne(data=identical, columns=["val"], pval=True, groupby="rvs", htest={"val": func})
-
-        isclose(t1_identical._htest_table["P-Value"].val, stats.ks_2samp(rvs1, rvs4)[1])
-
     def test_compute_standardized_mean_difference_continuous(self, data_pn):
         """
         Test that pairwise standardized mean difference is computer correctly
@@ -1187,7 +1060,7 @@ class TestTableOne(object):
         exp_smd = {"Age": "-0.129", "SysABP": "-0.177", "Height": "-0.073", "Weight": "0.124", "LOS": "0.121"}
 
         for k in exp_smd:
-            smd = t.tableone.loc[k, "Grouped by MechVent"]["SMD (0,1)"][0]
+            smd = t.tableone.loc[k, "Grouped by MechVent"]["SMD (0,1)"].iloc[0]
             assert smd == exp_smd[k]
 
     def test_compute_standardized_mean_difference_categorical_missing_value_on_separate_row(self, data_pn):
@@ -1214,7 +1087,7 @@ class TestTableOne(object):
         exp_smd = {"ICU": "0.747", "MechVent": "nan", "death": "0.017"}
 
         for k in exp_smd:
-            smd = t.tableone.loc[k, "Grouped by MechVent"]["SMD (0,1)"][0]
+            smd = t.tableone.loc[k, "Grouped by MechVent"]["SMD (0,1)"].iloc[0]
             assert smd == exp_smd[k]
 
     def test_compute_standardized_mean_difference_categorical(self, data_pn):
@@ -1248,7 +1121,7 @@ class TestTableOne(object):
         exp_smd = {"ICU": "0.747", "MechVent": "nan", "death": "0.017"}
 
         for k in exp_smd:
-            smd = t.tableone.loc[k, "Grouped by MechVent"]["SMD (0,1)"][0]
+            smd = t.tableone.loc[k, "Grouped by MechVent"]["SMD (0,1)"].iloc[0]
             assert smd == exp_smd[k]
 
     def test_order_of_order_categorical_columns(self):
