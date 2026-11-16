@@ -716,7 +716,7 @@ def dip_pval_tabinterpol(dip, N):
     dip_sqrtN = np.sqrt(N)*dip
     dip_interpol_sqrtN = (
         np.sqrt(Ns[iNlow])*diptable[iNlow, :] + qN*(
-            np.sqrt(Ns[iNlow+1])*diptable[iNlow+1, :]-np.sqrt(Ns[iNlow])*diptable[iNlow, :]))
+            np.sqrt(Ns[iNlow+1])*diptable[iNlow+1, :]-np.sqrt(Ns[iNlow])*diptable[iNlow, :]))  # pyright: ignore[reportGeneralTypeIssues]  # numpy>=1.25 stubs type this float table as bool
 
     if not (dip_interpol_sqrtN < dip_sqrtN).any():
         return 1
