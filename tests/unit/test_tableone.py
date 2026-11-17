@@ -1578,3 +1578,18 @@ class TestTableOne(object):
         row6 = list(t1.tableone.loc["ICU, n (%)"][group].values[3])
         row6_expect = ["", "215 (84.0)", "41 (16.0)"]
         assert row6 == row6_expect
+
+
+@pytest.mark.parametrize("row_percent", [False, True])
+def test_all_missing_categorical_builds_a_blank_row(row_percent):
+    # pandas >= 2 keeps int64 for map(str) on an empty Series, so a categorical
+    # with no non-missing values crashed while building its summary column.
+    df = pd.DataFrame({"age": [50.0, 60.0, 70.0], "death": [np.nan] * 3})
+    t1 = TableOne(
+        df,
+        columns=["age", "death"],
+        categorical=["death"],
+        row_percent=row_percent,
+        missing_value_on_separate_row=True,
+    )
+    assert t1.tableone.loc["death, n (%)"]["Missing"].tolist() == [3]

@@ -1095,9 +1095,9 @@ class TableOne:
 
             # add summary column
             if self._row_percent:
-                df["t1_summary"] = df.freq.map(str) + " (" + df.percent_row_str.map(str) + ")"
+                df["t1_summary"] = df.freq.astype(str) + " (" + df.percent_row_str.map(str) + ")"
             else:
-                df["t1_summary"] = df.freq.map(str) + " (" + df.percent_str.map(str) + ")"
+                df["t1_summary"] = df.freq.astype(str) + " (" + df.percent_str.map(str) + ")"
 
             # add to dictionary
             group_dict[g] = df
